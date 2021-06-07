@@ -1,0 +1,89 @@
+version: "3.9"
+
+services: 
+
+    news:
+        build: ./News
+        networks: 
+            - main
+        command: sh -c "python manage.py makemigrations && python manage.py migrate && python manage.py runserver 0.0.0.0:8001"
+        container_name: news
+        ports:   
+            - 8001:8001
+        depends_on: 
+            - pgdb
+
+    users:
+        build: ./Users
+        command: sh -c "python manage.py migrate && python manage.py runserver 0.0.0.0:8002"
+        container_name: users
+        networks: 
+            - main
+        ports: 
+            - 8002:8002
+        depends_on:
+            - pgdb
+    email:
+        build: ./Email
+        networks: 
+            - main
+        command: sh -c "python manage.py inspectdb > SendNews/models.py && python manage.py runserver 0.0.0.0:8000"
+        container_name: email
+        ports:  
+            - 8000:8000
+        depends_on: 
+            - users
+            - pgdb
+    celery:
+        build: ./Email
+        networks: 
+            - main
+        command: sh -c "python manage.py inspectdb > SendNews/models.py && celery -A core worker -l info"
+        depends_on:
+            - email
+            - rabbitmq
+    celery_beat:
+        build: ./News
+        networks: 
+            - main
+        command: sh -c "celery -A core beat -l info"
+        depends_on: 
+            - news
+            - rabbitmq
+    pgdb:
+        image: postgres
+        container_name: pgdb
+        volumes:
+            - postgres_data:/var/lib/postgresql/data/
+        environment:
+            - POSTGRES_DB=testdb
+            - POSTGRES_USER=aterow
+            - POSTGRES_PASSWORD=123#j
+        networks: 
+            - main
+
+    rabbitmq:
+        container_name: rabbitmq
+        hostname: rabbitmq
+        image: rabbitmq:latest
+        networks:
+          - main
+        ports:
+          - "5672:5672"
+    nginx:
+        build: ./web
+        ports: 
+            - 80:80
+        networks: 
+            - main
+        depends_on: 
+            - email
+            - news
+            - users
+
+networks: 
+    main:
+
+
+volumes:
+    postgres_data:
